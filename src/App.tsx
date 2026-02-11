@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 
 // Defining a custom window interface to include 'ethereum' object injected by wallets
@@ -8,95 +8,174 @@ interface WindowWithEthereum extends Window {
 
 declare const window: WindowWithEthereum;
 
+interface TokenData {
+  name: string;
+  symbol: string;
+  balance: string;
+  decimals: number;
+}
+
+// Minimal ABI for reading ERC20 data
+const ERC20_ABI = [
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function balanceOf(address) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+];
+
+// Example: LINK Token on Ethereum Mainnet
+const CONTRACT_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
+
 const App: React.FC = () => {
   const [account, setAccount] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isConnecting, setIsConnecting] = useState<boolean>(false);
+  const [tokenData, setTokenData] = useState<TokenData | null>(null);
 
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * CORE: Read Contract Data Logic
+   * Fetches token information and user balance
+   */
+  const fetchContractData = useCallback(async (userAddress: string) => {
+    try {
+      setLoading(true);
+      // Initialize provider from window.ethereum
+      const provider = new ethers.BrowserProvider(window.ethereum);
+
+      // Create contract instance (Read-only)
+      const contract = new ethers.Contract(
+        CONTRACT_ADDRESS,
+        ERC20_ABI,
+        provider,
+      );
+
+      // Execute calls in parallel for performance
+      const [name, symbol, decimals, balance] = await Promise.all([
+        contract.name(),
+        contract.symbol(),
+        contract.decimals(),
+        contract.balanceOf(userAddress),
+      ]);
+
+      setTokenData({
+        name,
+        symbol,
+        decimals: Number(decimals),
+        balance: ethers.formatUnits(balance, decimals),
+      });
+    } catch (err) {
+      console.error("Failed to fetch contract data:", err);
+      setError("Failed to load token information.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /**
+   * Wallet Connection Logic
+   */
   const connectWallet = async () => {
     setError(null);
-
-    // 1. Check if MetaMask or any EIP-1193 provider is installed
     if (!window.ethereum) {
-      setError("Please install MetaMask or another Web3 wallet.");
+      setError("Please install MetaMask.");
       return;
     }
 
     try {
-      setIsConnecting(true);
-
-      // 2. Request account access from the wallet
-      // This triggers the MetaMask popup
+      setLoading(true);
       const accounts: string[] = await window.ethereum.request({
         method: "eth_requestAccounts",
       });
 
-      // 3. Setup Ethers Provider
-      // We use BrowserProvider for ethers v6
-      const provider = new ethers.BrowserProvider(window.ethereum);
-
-      // 4. Update state with the first account found
       setAccount(accounts[0]);
-
-      console.log("Connected to:", accounts[0]);
+      // Immediately fetch data after successful connection
+      await fetchContractData(accounts[0]);
     } catch (err: any) {
-      // Handle user rejection or other errors
-      if (err.code === 4001) {
-        setError("Connection request was rejected by user.");
-      } else {
-        setError("An unexpected error occurred.");
-      }
-      console.error(err);
+      if (err.code === 4001) setError("Connection rejected.");
+      else setError("An unexpected error occurred.");
     } finally {
-      setIsConnecting(false);
+      setLoading(false);
     }
   };
 
-  // 5. Listen for account or network changes (Best Practice)
+  /**
+   * Listeners for Account/Network changes
+   */
   useEffect(() => {
     if (window.ethereum) {
-      // Reload page or update state if user switches accounts in the wallet
       window.ethereum.on("accountsChanged", (accounts: string[]) => {
-        setAccount(accounts.length > 0 ? accounts[0] : null);
+        if (accounts.length > 0) {
+          setAccount(accounts[0]);
+          fetchContractData(accounts[0]);
+        } else {
+          setAccount(null);
+          setTokenData(null);
+        }
       });
 
-      // Recommended to reload the page on chain change to avoid state inconsistencies
-      window.ethereum.on("chainChanged", () => {
-        window.location.reload();
-      });
+      window.ethereum.on("chainChanged", () => window.location.reload());
     }
 
-    // Clean up listeners on unmount
     return () => {
-      if (window.ethereum?.removeListener) {
-        window.ethereum.removeListener("accountsChanged", () => {});
-        window.ethereum.removeListener("chainChanged", () => {});
-      }
+      window.ethereum?.removeAllListeners();
     };
-  }, []);
+  }, [fetchContractData]);
 
   return (
-    <div className="p-4 border rounded-lg shadow-sm">
-      <h2 className="text-xl font-bold mb-4">Web3 Auth</h2>
+    <div className="max-w-md mx-auto mt-10 p-6 border border-gray-100 rounded-xl shadow-lg bg-white">
+      <h2 className="text-2xl font-bold mb-6 text-gray-800">Web3 Dashboard</h2>
 
-      {account ? (
-        <div className="space-y-2">
-          <p className="text-green-600 font-medium">Status: Connected</p>
-          <p className="text-sm bg-gray-100 p-2 rounded break-all">
-            Address: <strong>{account}</strong>
-          </p>
-        </div>
-      ) : (
+      {!account ? (
         <button
           onClick={connectWallet}
-          disabled={isConnecting}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
+          disabled={loading}
+          className="w-full py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 transition"
         >
-          {isConnecting ? "Connecting..." : "Connect Wallet"}
+          {loading ? "Connecting..." : "Connect Wallet"}
         </button>
+      ) : (
+        <div className="space-y-6">
+          {/* Wallet Info Section */}
+          <div className="p-3 bg-gray-50 rounded-md border border-gray-200">
+            <p className="text-xs text-gray-500 uppercase font-bold">
+              Connected Wallet
+            </p>
+            <p className="text-sm font-mono truncate">{account}</p>
+          </div>
+
+          {/* Contract Data Section */}
+          <div className="p-4 bg-blue-50 rounded-md border border-blue-100">
+            <h3 className="text-sm font-bold text-blue-800 mb-3">
+              Token Information
+            </h3>
+            {loading && !tokenData ? (
+              <p className="text-sm animate-pulse">Loading contract data...</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-gray-500">Asset</p>
+                  <p className="font-bold">
+                    {tokenData?.name} ({tokenData?.symbol})
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Your Balance</p>
+                  <p className="font-bold text-green-600">
+                    {tokenData?.balance}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
-      {error && <p className="mt-2 text-red-500 text-sm">{error}</p>}
+      {error && (
+        <div className="mt-4 p-3 bg-red-100 text-red-700 text-sm rounded-md">
+          {error}
+        </div>
+      )}
     </div>
   );
 };
