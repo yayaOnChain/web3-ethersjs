@@ -33,6 +33,70 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  // New state for transaction status
+  const [txHash, setTxHash] = useState<string | null>(null);
+
+  /**
+   * CORE: Write Transaction Logic
+   * Sends tokens to a specific address
+   */
+  const handleTransfer = async () => {
+    if (!window.ethereum) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      setTxHash(null);
+
+      // 1. Initialize Provider and Signer
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner(); // Required for "Write" operations
+
+      // 2. Create Contract instance with Signer
+      const contract = new ethers.Contract(
+        CONTRACT_ADDRESS,
+        [
+          ...ERC20_ABI,
+          "function transfer(address to, uint256 amount) returns (bool)", // Adding write function to ABI
+        ],
+        signer,
+      );
+
+      // 3. Define parameters
+      const recipient = "0x0000000000000000000000000000000000000000"; // Example: Burn address or other wallet
+      const amount = ethers.parseUnits("0.1", tokenData?.decimals || 18);
+
+      // 4. Execute Transaction
+      console.log("Requesting signature...");
+      const tx = await contract.transfer(recipient, amount);
+
+      // 5. Transaction Sent (Waiting for mining)
+      setTxHash(tx.hash);
+      console.log("Transaction sent! Hash:", tx.hash);
+
+      // 6. Wait for confirmation (1 block)
+      const receipt = await tx.wait();
+
+      if (receipt.status === 1) {
+        alert("Transfer Successful!");
+        // Refresh balance after successful transfer
+        if (account) fetchContractData(account);
+      } else {
+        throw new Error("Transaction failed on-chain");
+      }
+    } catch (err: any) {
+      console.error("Transfer error:", err);
+      // Handle user rejection or other errors
+      if (err.code === "ACTION_REJECTED") {
+        setError("User rejected the transaction.");
+      } else {
+        setError(err.reason || "Transaction failed.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   /**
    * CORE: Read Contract Data Logic
    * Fetches token information and user balance
@@ -168,6 +232,24 @@ const App: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {account && (
+        <div className="mt-6 pt-6 border-t border-gray-100">
+          <button
+            onClick={handleTransfer}
+            disabled={loading}
+            className="w-full py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-400 transition"
+          >
+            {loading ? "Processing..." : "Transfer 0.1 Token"}
+          </button>
+
+          {txHash && (
+            <div className="mt-3 p-2 bg-gray-50 rounded text-[10px] break-all">
+              <span className="font-bold">Tx Hash:</span> {txHash}
+            </div>
+          )}
         </div>
       )}
 
