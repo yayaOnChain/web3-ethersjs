@@ -37,8 +37,7 @@ const App: React.FC = () => {
   const [txHash, setTxHash] = useState<string | null>(null);
 
   /**
-   * CORE: Write Transaction Logic
-   * Sends tokens to a specific address
+   * CORE: Write Transaction with Gas Estimation
    */
   const handleTransfer = async () => {
     if (!window.ethereum) return;
@@ -48,11 +47,11 @@ const App: React.FC = () => {
       setError(null);
       setTxHash(null);
 
-      // 1. Initialize Provider and Signer
+      // Initialize Provider and Signer
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner(); // Required for "Write" operations
 
-      // 2. Create Contract instance with Signer
+      // Create Contract instance with Signer
       const contract = new ethers.Contract(
         CONTRACT_ADDRESS,
         [
@@ -62,23 +61,41 @@ const App: React.FC = () => {
         signer,
       );
 
-      // 3. Define parameters
+      // Define parameters
       const recipient = "0x0000000000000000000000000000000000000000"; // Example: Burn address or other wallet
       const amount = ethers.parseUnits("0.1", tokenData?.decimals || 18);
 
-      // 4. Execute Transaction
-      console.log("Requesting signature...");
-      const tx = await contract.transfer(recipient, amount);
+      // --- GAS ESTIMATION STRATEGY ---
 
-      // 5. Transaction Sent (Waiting for mining)
+      // Estimate gas for the specific transaction
+      // This simulates the call on the EVM without spending real ETH
+      console.log("Estimating gas...");
+      const estimatedGas = await contract.transfer.estimateGas(
+        recipient,
+        amount,
+      );
+
+      // Add a 20% Safety Buffer
+      // Use BigInt (n) for arithmetic with gas units
+      const gasLimitWithBuffer = (estimatedGas * 120n) / 100n;
+
+      console.log(`Gas Estimated: ${estimatedGas.toString()}`);
+      console.log(`Gas Limit with Buffer: ${gasLimitWithBuffer.toString()}`);
+
+      // Execute Transaction with manual gasLimit
+      const tx = await contract.transfer(recipient, amount, {
+        gasLimit: gasLimitWithBuffer,
+      });
+
+      // Transaction Sent (Waiting for mining)
       setTxHash(tx.hash);
       console.log("Transaction sent! Hash:", tx.hash);
 
-      // 6. Wait for confirmation (1 block)
+      // Wait for confirmation (1 block)
       const receipt = await tx.wait();
 
-      if (receipt.status === 1) {
-        alert("Transfer Successful!");
+      if (receipt && receipt.status === 1) {
+        alert("Transfer Successful with manual gas limit!");
         // Refresh balance after successful transfer
         if (account) fetchContractData(account);
       } else {
@@ -86,11 +103,14 @@ const App: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Transfer error:", err);
-      // Handle user rejection or other errors
-      if (err.code === "ACTION_REJECTED") {
-        setError("User rejected the transaction.");
+
+      // Handle specific Gas/Revert errors
+      if (err.code === "INSUFFICIENT_FUNDS") {
+        setError("You don't have enough ETH for gas fees.");
+      } else if (err.code === "ACTION_REJECTED") {
+        setError("Transaction rejected by user.");
       } else {
-        setError(err.reason || "Transaction failed.");
+        setError("Gas estimation failed. The transaction might revert.");
       }
     } finally {
       setLoading(false);
@@ -240,22 +260,27 @@ const App: React.FC = () => {
           <button
             onClick={handleTransfer}
             disabled={loading}
-            className="w-full py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-400 transition"
+            className="w-full py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-400 transition"
           >
-            {loading ? "Processing..." : "Transfer 0.1 Token"}
+            {loading ? "Estimating & Sending..." : "Transfer with Gas Buffer"}
           </button>
 
           {txHash && (
-            <div className="mt-3 p-2 bg-gray-50 rounded text-[10px] break-all">
-              <span className="font-bold">Tx Hash:</span> {txHash}
+            <div className="mt-3 p-3 bg-blue-50 rounded-md border border-blue-100">
+              <p className="text-[10px] text-blue-800 font-bold uppercase">
+                Transaction Sent
+              </p>
+              <p className="text-[10px] font-mono break-all text-blue-600">
+                {txHash}
+              </p>
             </div>
           )}
         </div>
       )}
 
       {error && (
-        <div className="mt-4 p-3 bg-red-100 text-red-700 text-sm rounded-md">
-          {error}
+        <div className="mt-4 p-3 bg-red-50 text-red-600 text-xs rounded-md border border-red-100">
+          <strong>Error:</strong> {error}
         </div>
       )}
     </div>
