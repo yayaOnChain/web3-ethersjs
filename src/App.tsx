@@ -36,16 +36,77 @@ const App: React.FC = () => {
   // New state for transaction status
   const [txHash, setTxHash] = useState<string | null>(null);
 
+  const TARGET_CHAIN_ID = "0xaa36a7"; // Sepolia
+  const TARGET_CHAIN_NAME = "Sepolia Test Network";
+
+  /**
+   * CORE: Network Switching Logic
+   */
+  const switchNetwork = async () => {
+    if (!window.ethereum) return;
+
+    try {
+      // Requesting the wallet to switch to the target chain
+      await window.ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: TARGET_CHAIN_ID }],
+      });
+    } catch (switchError: any) {
+      // Error code 4902 means the chain has not been added to MetaMask
+      if (switchError.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: "wallet_addEthereumChain",
+            params: [
+              {
+                chainId: TARGET_CHAIN_ID,
+                chainName: TARGET_CHAIN_NAME,
+                rpcUrls: ["https://rpc.sepolia.org"], // Provide RPC if chain is unknown
+                nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+                blockExplorerUrls: ["https://sepolia.etherscan.io"],
+              },
+            ],
+          });
+        } catch (addError) {
+          setError("Failed to add the network to your wallet.");
+        }
+      } else {
+        setError("Failed to switch network.");
+      }
+    }
+  };
+
+  /**
+   * Helper: Network Switcher
+   */
+  const ensureCorrectNetwork = async () => {
+    const currentChainId = await window.ethereum.request({
+      method: "eth_chainId",
+    });
+    if (currentChainId !== TARGET_CHAIN_ID) {
+      const confirmSwitch = window.confirm(
+        `You are on the wrong network. Switch to ${TARGET_CHAIN_NAME}?`,
+      );
+      if (confirmSwitch) {
+        await switchNetwork();
+      }
+      return; // Stop execution until network is switched
+    }
+  };
+
   /**
    * CORE: Write Transaction with Gas Estimation
    */
   const handleTransfer = async () => {
-    if (!window.ethereum) return;
+    if (!window.ethereum || !account) return;
 
     try {
       setLoading(true);
       setError(null);
       setTxHash(null);
+
+      // Ensure user is on the correct network
+      await ensureCorrectNetwork();
 
       // Initialize Provider and Signer
       const provider = new ethers.BrowserProvider(window.ethereum);
