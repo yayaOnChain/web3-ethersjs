@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Contract, formatUnits, parseUnits, formatEther } from "ethers";
+import { Contract, formatUnits, parseUnits } from "ethers";
 import { ERC20_ABI } from "../contracts/erc20ABI";
 import { useWeb3 } from "./useWeb3";
 

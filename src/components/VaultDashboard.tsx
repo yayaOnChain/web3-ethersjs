@@ -7,9 +7,9 @@ import {
   type TokenInfo,
 } from "../hooks/useERC20";
 import { useVault, type VaultBalance } from "../hooks/useVault";
-import { formatTokenAmount, shortenAddress } from "../utils/format";
+import { shortenAddress } from "../utils/format";
 import { getContractAddresses } from "../contracts/addresses";
-import { parseUnits, formatEther } from "ethers";
+import { formatEther } from "ethers";
 
 const VaultDashboard: React.FC = () => {
   const {
@@ -22,7 +22,6 @@ const VaultDashboard: React.FC = () => {
   } = useWeb3();
 
   const {
-    vaultAddress,
     isPaused,
     getAllBalances,
     deposit,
@@ -794,7 +793,7 @@ const TokenBalanceRow: React.FC<TokenBalanceRowProps> = ({
   onTokenSelect,
 }) => {
   const { tokenInfo } = useERC20(balance.tokenAddress);
-  const { balanceDisplay, balanceFormatted, loading, error } = useERC20Balance(
+  const { balanceDisplay, loading, error } = useERC20Balance(
     balance.tokenAddress,
     balance.tokenAddress,
   );

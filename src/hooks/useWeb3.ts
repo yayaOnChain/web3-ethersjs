@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BrowserProvider, JsonRpcSigner, formatEther, Network } from "ethers";
+import { BrowserProvider, JsonRpcSigner, Network } from "ethers";
 
 interface NetworkInfo {
   chainId: number;

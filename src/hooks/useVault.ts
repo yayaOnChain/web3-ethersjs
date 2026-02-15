@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Contract, formatUnits, parseUnits } from "ethers";
+import { Contract, parseUnits } from "ethers";
 import { VAULT_ABI } from "../contracts/vaultABI";
 import { useWeb3 } from "./useWeb3";
 import { getContractAddresses } from "../contracts/addresses";
@@ -57,25 +57,6 @@ export const useVault = () => {
       return 0n;
     }
   }; // Get user balance for specific token with decimals
-  const getUserBalanceFormatted = async (
-    tokenAddress: string,
-    decimals: number,
-  ): Promise<string> => {
-    if (!vaultContract || !account) {
-      return "0";
-    }
-
-    try {
-      const balanceRaw = await vaultContract.getUserBalance(
-        account,
-        tokenAddress,
-      );
-      return formatUnits(balanceRaw, decimals);
-    } catch (err) {
-      console.error("Failed to get vault balance:", err);
-      return "0";
-    }
-  };
 
   // Update getAllBalances to include decimals
   const getAllBalances = async (
